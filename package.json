@@ -1,0 +1,36 @@
+{
+  "name": "fanlang",
+  "displayName": "FanLang",
+  "description": "Provides syntax highlighting and bracket matching in Fan files.",
+  "version": "1.0.0",
+  "publisher": "kindy",
+  "license": "MIT",
+  "engines": {
+    "vscode": "*"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "fan",
+        "aliases": [
+          "FanLang"
+        ],
+        "extensions": [
+          ".fan"
+        ],
+        "configuration": "./fanlang.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fan",
+        "scopeName": "source.fan",
+        "path": "./fanlang.grammar.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kindy/vscode-fanlang.git"
+  }
+}
