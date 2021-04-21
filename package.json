@@ -2,7 +2,7 @@
   "name": "fanlang",
   "displayName": "FanLang",
   "description": "Provides syntax highlighting and bracket matching in Fan files.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "kindy",
   "license": "MIT",
   "engines": {
