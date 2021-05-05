@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as peg from "peggy";
 import {
   Definition,
   DocumentSymbol,
@@ -9,6 +7,9 @@ import {
   SymbolKind,
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import {parse} from './fan.peg';
+
+export {parse};
 
 export type Grammar = {
   grammar: string;
@@ -47,13 +48,6 @@ type RuleCore =
       rule: "lit-s" | "lit-re";
       val: string;
     };
-
-export const parser: {
-  parse(input: string, options?: peg.ParserOptions): Grammar;
-  SyntaxError: any;
-} = peg.generate(fs.readFileSync(__dirname + "/../fan.pegjs", "utf-8"), {
-  // trace: true,
-});
 
 export class Fan {
   constructor(public d: TextDocument, public g: Grammar) {
@@ -247,7 +241,7 @@ export class Fan {
     const src = d.getText();
     let g: Grammar | null = null;
     try {
-      g = parser.parse(src);
+      g = parse(src);
     } catch (ex) {
       console.error("parse fail", ex);
       return undefined;
@@ -256,40 +250,3 @@ export class Fan {
     return new Fan(d, g);
   }
 }
-
-function test() {
-  const words = {};
-
-  let src = `
-unit grammar ORJS::Grammar;
-
-program:
-    .shebang(?)
-    - statement(s?) %% .semicolon
-
-`;
-  src = fs.readFileSync(__dirname + "/../../samples/Grammar.fan", "utf-8");
-
-  let ret: Grammar = parser.parse(src, {
-    words,
-
-    tracer: {
-      trace(ev) {
-        const o = ev.location.start.offset;
-        false &&
-          console.log(
-            `got ${ev.type} of ${ev.rule} :${o}`,
-            `
-${src.substr(o, 5).replace(/\n/g, "\\n")}
-^`
-          );
-      },
-    },
-  });
-
-  console.log("got", JSON.stringify(ret, undefined, " "));
-
-  console.log("words", words);
-}
-
-// test();

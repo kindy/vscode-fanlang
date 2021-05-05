@@ -1,0 +1,10 @@
+node_modules/
+.vscode/
+.gitignore
+DEV.md
+Makefile
+out/*.js.map
+samples/
+src/
+tsconfig.json
+webpack.config.js

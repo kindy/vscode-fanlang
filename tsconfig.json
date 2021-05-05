@@ -9,6 +9,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["node_modules", ".vscode-test"],
-  "references": [{ "path": "./client" }, { "path": "./server" }]
+  "exclude": ["node_modules", ".vscode-test"]
 }
