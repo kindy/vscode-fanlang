@@ -1,35 +1,13 @@
 start
     = unit_grammar_declaration
 
-s = WS+
-
-_ = WS*
-
-BLANK "Blank" = " "
-
-WS "WS"
-  = "\t"
-  / "\v"
-  / "\f"
-  / "\n"
-  / " "
-  / "\u00A0"
-  / "\uFEFF"
-  / Zs
-  / "#" [^\n]* [\n]
-
-Zs = [\u0020\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]
-
 unit_grammar_declaration
-  = _ 'unit' s 'grammar' s n:$(type_name) terminator+
-  rules:grammar_body {
+  = _ 'unit' s 'grammar' s n:$(type_name) terminator
+  rules:grammar_body EOF {
     return {grammar: n, s: location().start.offset, e: location().end.offset, rules};
   }
 
 type_name = $(([a-zA-Z:])+)
-
-terminator "Term"
-  = [;\n]
 
 grammar_body = grammar_statement*
 
@@ -58,7 +36,7 @@ alternatives = _ '|'? _ a:production b:( _ '|' _ production )* {
   return [a, ...b.map(x => x[3])];
 }
 
-production = a:rule_part b:(s rule_part)* {
+production = a:rule_part b:(_ rule_part)* {
   // console.log('production', b);
 
   return b.length ? {rule: 'parts', parts: [a, ...b.map(x=>x[1])], s: location().start.offset, e: location().end.offset} : a;
@@ -74,7 +52,7 @@ subrule "SubRule"
   / bracketed_group
 
 atomic_subrule
-  = c:[+-] {return {rule: c}}
+  = _ c:[+-] _ {return {rule: c}}
   / named_subrule
   / literal_string {return {rule: 'lit-s', val: text()}}
   / literal_regex {return {rule: 'lit-re', val: text()}}
@@ -103,12 +81,12 @@ bracketed_group = '(' _ p:production _ ')' {
 rule_modifier = [.]
 
 rule_quantifier "RuleQuant"
-  = '(' (
+  = _ '(' (
     DIGIT+ ('..' DIGIT* )?
     / '..' DIGIT+
     / 's' '?'?
     / '?'
-  ) ')' (s separator_marker s separator_subrule)?
+  ) ')' _ (separator_marker _ separator_subrule)?
 
 separator_marker = '%' '%'?
 
@@ -117,3 +95,34 @@ separator_subrule = atomic_subrule
 DIGIT "Digit" = [0-9]
 
 rule_name "RuleName" = [a-zA-Z0-9_-]+
+
+s = WS+
+
+_ = WS*
+
+BLANK "Blank" = " "
+
+WS "WS"
+  = "\t"
+  / "\v"
+  / "\f"
+  / "\n"
+  / " "
+  / "\uFEFF"
+  / Zs
+  / "#" [^\r\n]* [\r]?[\n]
+
+Zs = [\u0020\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]
+
+// EOF: https://groups.google.com/g/pegjs/c/-Vz4F1k-FyQ
+EOF = !.
+
+EOL = '\r'? '\n'
+
+terminator "Terminator"
+  = non_semicolon_terminator
+  / _ ';' _
+
+non_semicolon_terminator
+  = _ &( WS* ( ( (',' WS*)? '}' ) / EOF ) )
+  / &{ /* {TODO: check '}' */ return true; } WS* &(EOL / EOF ) _

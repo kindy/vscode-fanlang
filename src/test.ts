@@ -1,9 +1,21 @@
 import * as fs from "fs";
-import { parse, Grammar } from "./fan";
+import * as peg from "peggy";
+import {
+  // parse,
+  Grammar,
+} from "./fan";
+
+const { parse } = peg.generate(
+  fs.readFileSync(__dirname + "/fan.pegjs", "utf-8"),
+  {
+    trace: true,
+  }
+) as {
+  parse(input: string, options?: peg.ParserOptions): Grammar;
+  SyntaxError: any;
+};
 
 function test() {
-  const words = {};
-
   let src = `
 unit grammar ORJS::Grammar;
 
@@ -12,13 +24,11 @@ program:
     - statement(s?) %% .semicolon
 
 `;
-  src = fs.readFileSync(__dirname + "/../../samples/Grammar.fan", "utf-8");
+  src = fs.readFileSync(__dirname + "/../samples/Grammar.fan", "utf-8");
 
   let ret: Grammar = parse(src);
 
   console.log("got", JSON.stringify(ret, undefined, " "));
-
-  console.log("words", words);
 }
 
 test();
