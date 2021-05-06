@@ -8,3 +8,4 @@ samples/
 src/
 tsconfig.json
 webpack.config.js
+*.log
