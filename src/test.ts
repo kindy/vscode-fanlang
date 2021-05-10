@@ -1,3 +1,5 @@
+/// <reference lib="es2020" />
+
 import * as fs from "fs";
 import * as peg from "peggy";
 import {

@@ -8,21 +8,24 @@ import {
   InitializeResult,
 } from "vscode-languageserver";
 
-import { Fan } from "./fan";
+import { Fan, FanLS } from "./fan";
 
 import { TextDocument as RawTextDocument } from "vscode-languageserver-textdocument";
 
-type TextDocument = RawTextDocument & { fan?: Fan | undefined };
+type TextDocument = RawTextDocument & { fan?: FanLS | undefined };
 const TextDocument = RawTextDocument;
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
 
+export type ConnectionType = typeof connection;
+
 // console.log('server', connection);
 
+export type Documents = TextDocuments<TextDocument>;
 // Create a simple text document manager.
-const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+const documents: Documents = new TextDocuments(TextDocument);
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
@@ -74,21 +77,15 @@ connection.onInitialized(() => {
 });
 
 function reparse(document: TextDocument) {
-  markForReparsing(document);
-  ensureParsed(document);
+  ensureParsed(document, true);
 }
 
-documents.onDidChangeContent((change) => {
-  reparse(change.document);
-});
-
-function markForReparsing(document: TextDocument) {
-  document["fan"] = undefined;
-}
-
-function ensureParsed(document: TextDocument): Fan | undefined {
-  if (!document["fan"]) {
-    document["fan"] = Fan.process(document);
+function ensureParsed(
+  document: TextDocument,
+  force = false
+): FanLS | undefined {
+  if (force || !document["fan"]) {
+    document["fan"] = Fan.process(document, documents);
   }
 
   return document["fan"];
@@ -108,7 +105,7 @@ connection.onReferences((params) => {
 });
 
 connection.onDocumentSymbol((params) => {
-  // console.log("onDocumentSymbol", params);
+  console.log("onDocumentSymbol", params);
 
   const uri = params.textDocument.uri;
   const document = documents.get(uri);
@@ -146,6 +143,16 @@ connection.onDefinition((params) => {
   return ensureParsed(document)?.getDefinition(offset) || null;
 });
 
+documents.onDidChangeContent((change) => {
+  console.log(
+    `doc "${change.document.uri}" change v${change.document.version}`
+  );
+  reparse(change.document);
+
+  for (const doc of documents.all()) {
+    doc.fan?.checkDoc(connection);
+  }
+});
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 documents.listen(connection);
