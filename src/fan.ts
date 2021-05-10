@@ -5,11 +5,12 @@ import {
   Location,
   MarkupKind,
   SymbolKind,
+  Range,
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import {parse} from './fan.peg';
+import { parse } from "./fan.peg";
 
-export {parse};
+export { parse };
 
 export type Grammar = {
   grammar: string;
@@ -18,18 +19,37 @@ export type Grammar = {
   rules: Array<RuleDef>;
 };
 type RuleDef = {
-  ruledef: string;
+  ruledef: RuleName;
   s: number;
-  /** name 的 pos */
-  e_name: number;
   e: number;
   alts: Array<Rule>;
+};
+type RuleName = {
+  name: string;
+  s: number;
+  e: number;
 };
 type Rule = RuleCore & {
   s: number;
   e: number;
-  q: any;
+  q?: RuleQuant;
 };
+type RuleQuant = {
+  s: number;
+  e: number;
+  type: "quant";
+  range: string;
+  sep?: RuleQuantSep;
+};
+type RuleQuantSep = {
+  type: "quant-sep";
+  marker: string;
+  rule: Rule;
+
+  s: number;
+  e: number;
+};
+
 type RuleCore =
   | {
       rule: "parts";
@@ -48,6 +68,11 @@ type RuleCore =
       rule: "lit-s" | "lit-re";
       val: string;
     };
+
+type LeafNode = Rule | RuleName | RuleQuantSep;
+
+const isName = (val: any): val is RuleName => "name" in val;
+const isQuantSep = (val: any): val is RuleQuantSep => val?.type === "quant-sep";
 
 export class Fan {
   constructor(public d: TextDocument, public g: Grammar) {
@@ -74,18 +99,16 @@ export class Fan {
 
         return {
           kind: SymbolKind.Method,
-          name: rule.ruledef,
+          name: rule.ruledef.name,
           range,
           selectionRange: {
-            start: this.d.positionAt(rule.s),
-            end: this.d.positionAt(rule.e_name),
+            start: this.d.positionAt(rule.ruledef.s),
+            end: this.d.positionAt(rule.ruledef.e),
           },
         };
       }),
     };
 
-    // this.g.
-    // SymbolKind.Array;
     return [gs];
   }
 
@@ -100,38 +123,55 @@ export class Fan {
       }
     };
 
-    const o = this.getRuleAtPos(pos);
+    const o = this.getLeafNodeAtPos(pos);
 
     if (!o) {
       return null;
     }
 
-    const h: Hover = {
+    const mk = (
+      value: string,
+      range?: { s: number; e: number } | undefined
+    ): Hover => ({
       contents: {
         kind: MarkupKind.Markdown,
-        value: desc(o),
+        value,
       },
-    };
+      range: range
+        ? {
+            start: this.d.positionAt(range.s),
+            end: this.d.positionAt(range.e),
+          }
+        : undefined,
+    });
+
+    const h = isName(o)
+      ? mk(`rule ${o.name}`, o)
+      : isQuantSep(o)
+      ? (console.log('sep', o), mk(desc(o.rule), o.rule))
+      : mk(desc(o), o.rule == "lit-re" ? o : undefined);
 
     return h;
   }
 
   getDefinition(pos: number): Definition | null {
-    const o = this.getRuleAtPos(pos);
+    const o = this.getLeafNodeAtPos(pos);
 
     if (!o) {
       return null;
     }
 
-    if (o.rule === "ref") {
-      const def = this.g.rules.find((r) => r.ruledef === o.ref);
+    const name = this.getRuleNameInNode(o);
+
+    if (name) {
+      const def = this.g.rules.find((r) => r.ruledef.name === name);
 
       if (def) {
         return {
           uri: this.d.uri,
           range: {
-            start: this.d.positionAt(def.s),
-            end: this.d.positionAt(def.e_name),
+            start: this.d.positionAt(def.ruledef.s),
+            end: this.d.positionAt(def.ruledef.e),
           },
         };
       }
@@ -140,26 +180,39 @@ export class Fan {
     return null;
   }
 
-  getReferences(pos: number): Location[] | null {
-    const o = this.getRuleAtPos(pos);
+  getRuleNameInNode(node: LeafNode): string | null {
+    return isName(node)
+      ? node.name
+      : isQuantSep(node)
+      ? node.rule.rule === "ref"
+        ? node.rule.ref
+        : null
+      : node.rule === "ref"
+      ? node.ref
+      : null;
+  }
 
-    if (!o) {
+  getReferences(pos: number): Location[] | null {
+    const node = this.getLeafNodeAtPos(pos);
+
+    if (!node) {
       return null;
     }
 
-    if (o.rule === "ref") {
-      const name = o.ref;
+    const name = this.getRuleNameInNode(node);
+
+    if (name) {
       const uri = this.d.uri;
       let locs: Location[] = [];
 
-      const def = this.g.rules.find((r) => r.ruledef === name);
+      const def = this.g.rules.find((r) => r.ruledef.name === name);
 
       if (def) {
         locs.push({
           uri,
           range: {
-            start: this.d.positionAt(def.s),
-            end: this.d.positionAt(def.e_name),
+            start: this.d.positionAt(def.ruledef.s),
+            end: this.d.positionAt(def.ruledef.e),
           },
         });
 
@@ -193,8 +246,11 @@ export class Fan {
     return null;
   }
 
-  getRuleAtPos(pos: number): Rule | null {
-    let o: Rule | null = null;
+  getLeafNodeAtPos(pos: number): LeafNode | null {
+    let o: LeafNode | null = null;
+
+    const isIn = (o: { s: number; e: number }): boolean =>
+      pos >= o.s && pos <= o.e;
 
     const p = (r: Rule): boolean => {
       if (pos < r.s) {
@@ -202,10 +258,17 @@ export class Fan {
       }
 
       if (r.rule === "parts") {
-        return ps(r.parts);
+        let ret = ps(r.parts);
+
+        if (!ret && r.q?.sep && isIn(r.q.sep)) {
+          o = r.q.sep;
+          ret = true;
+        }
+
+        return ret;
       } else {
-        if (pos >= r.s && pos <= r.e) {
-          o = r;
+        if (isIn(r)) {
+          o = r.q?.sep && isIn(r.q.sep) ? r.q.sep : r;
           return true;
         }
       }
@@ -227,7 +290,12 @@ export class Fan {
         break;
       }
 
-      if (pos >= rule.s && pos <= rule.e) {
+      if (isIn(rule)) {
+        if (isIn(rule.ruledef)) {
+          o = rule.ruledef;
+          break;
+        }
+
         ps(rule.alts);
 
         break;

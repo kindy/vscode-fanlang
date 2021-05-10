@@ -18,16 +18,15 @@ grammar_statement
 
 rule_definition = n:rule_head b:rule_body {
   return {
-    ruledef: n.name,
+    ruledef: n,
     s: n.s,
-    e_name: n.e,
     e: location().end.offset,
     alts: b,
   }
 }
 
-rule_head = s:$(_) n:$(rule_name) s2:$(BLANK* ':' _) {
-  return {name: n, s: location().start.offset + s.length, e: location().end.offset - s2.length};
+rule_head = _ n:rule_name BLANK* ':' _ {
+  return n;
 }
 
 rule_body = alternatives
@@ -42,7 +41,7 @@ production = a:rule_part b:(_ rule_part)* {
   return b.length ? {rule: 'parts', parts: [a, ...b.map(x=>x[1])], s: location().start.offset, e: location().end.offset} : a;
 }
 
-rule_part = a:subrule q:$(rule_quantifier?) {
+rule_part = a:subrule q:rule_quantifier? {
   const {start: {offset: s}, end: {offset: e}} = location();
   return {...a, s, e, q};
 }
@@ -67,9 +66,9 @@ double_quoted_literal_string "DoubleString"
   = ["] ([^\\"]+ / [\\] .)* ["]
 
 named_subrule
-  = m:$(rule_modifier*) n:$(rule_name) !(BLANK* ':') {
+  = m:$(rule_modifier*) n:rule_name !(BLANK* ':') {
     // console.log('named_subrule', m, n);
-    return {rule: 'ref', ref: n, m};
+    return {rule: 'ref', ref: n.name, m};
   }
 
 literal_regex "LitRegex" = '/' ([^\\/]+ / [\\] .)* '/'
@@ -81,20 +80,31 @@ bracketed_group = '(' _ p:production _ ')' {
 rule_modifier = [.]
 
 rule_quantifier "RuleQuant"
-  = _ '(' (
+  = _ '(' range:$(
     DIGIT+ ('..' DIGIT* )?
     / '..' DIGIT+
     / 's' '?'?
     / '?'
-  ) ')' _ (separator_marker _ separator_subrule)?
+  ) ')' _ sep:separator? {
+    return {type: "quant", range, sep, s: location().start.offset, e: location().end.offset};
+  }
+
+separator = marker:$(separator_marker) _ rule:separator_subrule {
+  return {type: "quant-sep", marker, rule, s: location().start.offset, e: location().end.offset};
+}
 
 separator_marker = '%' '%'?
 
-separator_subrule = atomic_subrule
+separator_subrule = a:atomic_subrule {
+  const {start: {offset: s}, end: {offset: e}} = location();
+  return {...a, s, e};
+}
 
 DIGIT "Digit" = [0-9]
 
-rule_name "RuleName" = [a-zA-Z0-9_-]+
+rule_name "RuleName" = n:$([a-zA-Z0-9_-]+) {
+  return {name: n, s: location().start.offset, e: location().end.offset};
+}
 
 s = WS+
 
